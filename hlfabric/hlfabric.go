@@ -40,16 +40,16 @@ type Client struct {
 }
 
 // You must call the Close() method on the client when you're done working with it.
-func NewClient(cfg *Options) (*Client, error) {
+func NewClient(opts Options) (*Client, error) {
 
-	wallet, err := gateway.NewFileSystemWallet(cfg.WalletPath)
+	wallet, err := gateway.NewFileSystemWallet(opts.WalletPath)
 	if err != nil {
 		fmt.Printf("Failed to create wallet: %s\n", err)
 		return nil, err
 	}
 
-	if !wallet.Exists(cfg.AppUser.Name) {
-		err = populateWallet(wallet, cfg.MspID, &cfg.AppUser)
+	if !wallet.Exists(opts.AppUser.Name) {
+		err = populateWallet(wallet, opts.MspID, &opts.AppUser)
 		if err != nil {
 			fmt.Printf("Failed to populate wallet contents: %s\n", err)
 			return nil, err
@@ -57,24 +57,24 @@ func NewClient(cfg *Options) (*Client, error) {
 	}
 
 	gw, err := gateway.Connect(
-		gateway.WithConfig(config.FromFile(filepath.Clean(cfg.CcpPath))),
-		gateway.WithIdentity(wallet, cfg.AppUser.Name),
+		gateway.WithConfig(config.FromFile(filepath.Clean(opts.CcpPath))),
+		gateway.WithIdentity(wallet, opts.AppUser.Name),
 	)
 	if err != nil {
 		fmt.Printf("Failed to connect to gateway: %s\n", err)
 		return nil, err
 	}
 
-	network, err := gw.GetNetwork(cfg.ChannelName)
+	network, err := gw.GetNetwork(opts.ChannelName)
 	if err != nil {
 		fmt.Printf("Failed to get network: %s\n", err)
 		return nil, err
 	}
 
-	contract := network.GetContract(cfg.ContractID)
+	contract := network.GetContract(opts.ContractID)
 
 	c := &Client{
-		opts:     cfg,
+		opts:     &opts,
 		wallet:   wallet,
 		gateway:  gw,
 		network:  network,
@@ -140,7 +140,7 @@ func (c *Client) Get(k string, v interface{}) (found bool, err error) {
 
 	data, err := c.Evaluate("Get", k)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(data) == 0 {
 		return false, nil
@@ -148,14 +148,15 @@ func (c *Client) Get(k string, v interface{}) (found bool, err error) {
 
 	err = json.Unmarshal(data, v)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	return true, nil
 }
 
 func (c *Client) Delete(k string) error {
-	if err := util.CheckKey(k); err != nil {
+	var err error
+	if err = util.CheckKey(k); err != nil {
 		return err
 	}
 
